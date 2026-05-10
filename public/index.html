@@ -1,9 +1,9 @@
-<!-- public/index.html -->
+<!-- Replace your entire public/index.html with this version -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Tower Defense</title>
 <style>
 body {
@@ -20,8 +20,25 @@ h1 {
 
 #ui {
     padding: 10px;
-    font-size: 20px;
     background: #111;
+    font-size: 18px;
+}
+
+#towerButtons {
+    margin-top: 8px;
+}
+
+button {
+    margin: 4px;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button.selected {
+    outline: 3px solid yellow;
 }
 
 canvas {
@@ -37,33 +54,38 @@ canvas {
 <h1>🏰 Tower Defense</h1>
 
 <div id="ui">
-    Gold: <span id="gold">100</span> |
+    Gold: <span id="gold">150</span> |
     Lives: <span id="lives">20</span> |
-    Wave: <span id="wave">1</span><br>
-    Click anywhere off the path to place a tower (Cost: 50)
+    Wave: <span id="wave">1</span>
+
+    <div id="towerButtons"></div>
 </div>
 
-<canvas id="game" width="800" height="500"></canvas>
+<canvas id="game" width="900" height="500"></canvas>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let gold = 100;
+let gold = 150;
 let lives = 20;
 let wave = 1;
+let firstBasicTowerPlaced = false;
 
 const goldEl = document.getElementById("gold");
 const livesEl = document.getElementById("lives");
 const waveEl = document.getElementById("wave");
+const towerButtons = document.getElementById("towerButtons");
 
 const pathPoints = [
     { x: 0, y: 250 },
-    { x: 200, y: 250 },
-    { x: 200, y: 100 },
-    { x: 500, y: 100 },
-    { x: 500, y: 400 },
-    { x: 800, y: 400 }
+    { x: 150, y: 250 },
+    { x: 150, y: 100 },
+    { x: 450, y: 100 },
+    { x: 450, y: 400 },
+    { x: 750, y: 400 },
+    { x: 750, y: 200 },
+    { x: 900, y: 200 }
 ];
 
 const towers = [];
@@ -71,69 +93,122 @@ const enemies = [];
 const bullets = [];
 
 /* =========================
-   ENEMY TYPES
+   TOWER TYPES
+========================= */
+const towerTypes = [
+    {
+        name: "Blue Tower",
+        color: "cyan",
+        cost: 100,
+        range: 130,
+        fireRate: 30,
+        damage: 15
+    },
+    {
+        name: "Sniper",
+        color: "lime",
+        cost: 200,
+        range: 260,
+        fireRate: 90,
+        damage: 80
+    },
+    {
+        name: "Rapid",
+        color: "orange",
+        cost: 180,
+        range: 100,
+        fireRate: 8,
+        damage: 6
+    },
+    {
+        name: "Cannon",
+        color: "red",
+        cost: 300,
+        range: 150,
+        fireRate: 60,
+        damage: 50
+    },
+    {
+        name: "Mega",
+        color: "purple",
+        cost: 600,
+        range: 220,
+        fireRate: 20,
+        damage: 40
+    }
+];
+
+let selectedTowerType = towerTypes[0];
+
+/* =========================
+   ENEMY TYPES (PNG FILES)
+   Put images in:
+   public/png/
 ========================= */
 const enemyTypes = [
     {
         name: "Slime",
-        color: "lime",
+        image: "png/slime.png",
         baseHp: 20,
         baseSpeed: 1.4,
-        radius: 12,
+        radius: 16,
         reward: 5
     },
     {
         name: "Goblin",
-        color: "green",
+        image: "png/goblin.png",
         baseHp: 40,
         baseSpeed: 1.8,
-        radius: 14,
+        radius: 18,
         reward: 8
     },
     {
         name: "Wolf",
-        color: "gray",
-        baseHp: 30,
-        baseSpeed: 2.8,
-        radius: 10,
+        image: "png/wolf.png",
+        baseHp: 35,
+        baseSpeed: 2.6,
+        radius: 16,
         reward: 10
     },
     {
         name: "Orc",
-        color: "darkgreen",
-        baseHp: 90,
-        baseSpeed: 1.1,
-        radius: 18,
+        image: "png/orc.png",
+        baseHp: 100,
+        baseSpeed: 1.2,
+        radius: 22,
         reward: 15
     },
     {
         name: "Troll",
-        color: "purple",
-        baseHp: 220,
+        image: "png/troll.png",
+        baseHp: 250,
         baseSpeed: 0.8,
-        radius: 24,
+        radius: 28,
         reward: 25
     },
     {
         name: "Dragon",
-        color: "orange",
-        baseHp: 500,
-        baseSpeed: 1.5,
-        radius: 28,
+        image: "png/dragon.png",
+        baseHp: 600,
+        baseSpeed: 1.6,
+        radius: 32,
         reward: 50
     }
 ];
 
+// Preload images
+for (const type of enemyTypes) {
+    type.img = new Image();
+    type.img.src = type.image;
+}
+
 function getEnemyType() {
-    if (wave < 3) {
-        return enemyTypes[Math.floor(Math.random() * 2)];
-    } else if (wave < 6) {
-        return enemyTypes[Math.floor(Math.random() * 4)];
-    } else if (wave < 10) {
-        return enemyTypes[Math.floor(Math.random() * 5)];
-    } else {
-        return enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
-    }
+    const maxIndex = Math.min(
+        enemyTypes.length - 1,
+        Math.floor((wave - 1) / 2) + 1
+    );
+
+    return enemyTypes[Math.floor(Math.random() * (maxIndex + 1))];
 }
 
 /* =========================
@@ -144,7 +219,7 @@ class Enemy {
         const type = getEnemyType();
 
         this.name = type.name;
-        this.color = type.color;
+        this.img = type.img;
         this.radius = type.radius;
         this.reward = type.reward;
 
@@ -175,46 +250,54 @@ class Enemy {
         if (dist < this.speed) {
             this.pathIndex++;
         } else {
-            this.x += (dx / dist) * this.speed;
-            this.y += (dy / dist) * this.speed;
+            this.x += dx / dist * this.speed;
+            this.y += dy / dist * this.speed;
         }
 
         return true;
     }
 
     draw() {
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
+        if (this.img.complete && this.img.naturalWidth > 0) {
+            ctx.drawImage(
+                this.img,
+                this.x - this.radius,
+                this.y - this.radius,
+                this.radius * 2,
+                this.radius * 2
+            );
+        } else {
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // HP bar
-        const barWidth = this.radius * 2;
-
+        const width = this.radius * 2;
         ctx.fillStyle = "black";
-        ctx.fillRect(
-            this.x - barWidth / 2,
-            this.y - this.radius - 12,
-            barWidth,
-            5
-        );
+        ctx.fillRect(this.x - width / 2, this.y - this.radius - 10, width, 5);
 
         ctx.fillStyle = "lime";
         ctx.fillRect(
-            this.x - barWidth / 2,
-            this.y - this.radius - 12,
-            barWidth * (this.hp / this.maxHp),
+            this.x - width / 2,
+            this.y - this.radius - 10,
+            width * (this.hp / this.maxHp),
             5
         );
     }
 }
 
 class Tower {
-    constructor(x, y) {
+    constructor(x, y, type) {
         this.x = x;
         this.y = y;
-        this.range = 120;
-        this.fireRate = 30;
+        this.type = type;
+
+        this.range = type.range;
+        this.fireRate = type.fireRate;
+        this.damage = type.damage;
+        this.color = type.color;
         this.cooldown = 0;
     }
 
@@ -232,31 +315,26 @@ class Tower {
         }
 
         if (target && this.cooldown <= 0) {
-            bullets.push(new Bullet(this.x, this.y, target));
+            bullets.push(new Bullet(this.x, this.y, target, this.damage));
             this.cooldown = this.fireRate;
         }
     }
 
     draw() {
-        ctx.fillStyle = "cyan";
+        ctx.fillStyle = this.color;
         ctx.beginPath();
         ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
         ctx.fill();
-
-        ctx.strokeStyle = "rgba(0,255,255,0.15)";
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
-        ctx.stroke();
     }
 }
 
 class Bullet {
-    constructor(x, y, target) {
+    constructor(x, y, target, damage) {
         this.x = x;
         this.y = y;
         this.target = target;
-        this.speed = 6;
-        this.damage = 15;
+        this.damage = damage;
+        this.speed = 8;
     }
 
     update() {
@@ -271,47 +349,85 @@ class Bullet {
             return false;
         }
 
-        this.x += (dx / dist) * this.speed;
-        this.y += (dy / dist) * this.speed;
-
+        this.x += dx / dist * this.speed;
+        this.y += dy / dist * this.speed;
         return true;
     }
 
     draw() {
         ctx.fillStyle = "yellow";
         ctx.beginPath();
-        ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+        ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
         ctx.fill();
     }
 }
 
 /* =========================
-   TOWER PLACEMENT
+   TOWER BUTTONS
 ========================= */
-canvas.addEventListener("click", (e) => {
+function getTowerCost(type) {
+    if (type.name === "Blue Tower" && !firstBasicTowerPlaced) return 0;
+    return type.cost;
+}
+
+function renderTowerButtons() {
+    towerButtons.innerHTML = "";
+
+    for (const type of towerTypes) {
+        const btn = document.createElement("button");
+        const cost = getTowerCost(type);
+
+        btn.textContent = `${type.name} (${cost})`;
+        btn.style.background = type.color;
+
+        if (selectedTowerType === type) {
+            btn.classList.add("selected");
+        }
+
+        btn.onclick = () => {
+            selectedTowerType = type;
+            renderTowerButtons();
+        };
+
+        towerButtons.appendChild(btn);
+    }
+}
+
+/* =========================
+   PLACE TOWERS
+========================= */
+canvas.addEventListener("click", e => {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    if (gold < 50) return;
+    const cost = getTowerCost(selectedTowerType);
 
-    // Don't place on path
+    if (gold < cost) return;
+
+    // prevent placing on path
     for (let i = 0; i < pathPoints.length - 1; i++) {
-        const a = pathPoints[i];
-        const b = pathPoints[i + 1];
+            const a = pathPoints[i];
+            const b = pathPoints[i + 1];
 
-        const minX = Math.min(a.x, b.x) - 30;
-        const maxX = Math.max(a.x, b.x) + 30;
-        const minY = Math.min(a.y, b.y) - 30;
-        const maxY = Math.max(a.y, b.y) + 30;
+            const minX = Math.min(a.x, b.x) - 30;
+            const maxX = Math.max(a.x, b.x) + 30;
+            const minY = Math.min(a.y, b.y) - 30;
+            const maxY = Math.max(a.y, b.y) + 30;
 
-        if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-            return;
-        }
+            if (x >= minX && x <= maxX &&
+                y >= minY && y <= maxY) {
+                return;
+            }
     }
 
-    towers.push(new Tower(x, y));
-    gold -= 50;
+    towers.push(new Tower(x, y, selectedTowerType));
+    gold -= cost;
+
+    if (selectedTowerType.name === "Blue Tower") {
+        firstBasicTowerPlaced = true;
+        renderTowerButtons();
+    }
 });
 
 /* =========================
@@ -329,7 +445,6 @@ function update() {
         spawnTimer = 0;
     }
 
-    // Update enemies
     for (let i = enemies.length - 1; i >= 0; i--) {
         if (!enemies[i].update()) {
             enemies.splice(i, 1);
@@ -342,26 +457,20 @@ function update() {
         }
     }
 
-    // Update towers
-    for (const tower of towers) {
-        tower.update();
-    }
+    for (const tower of towers) tower.update();
 
-    // Update bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
         if (!bullets[i].update()) {
             bullets.splice(i, 1);
         }
     }
 
-    // New wave
     if (enemiesToSpawn === 0 && enemies.length === 0) {
         wave++;
         enemiesToSpawn = 5 + wave * 3;
         gold += 50 + wave * 20;
     }
 
-    // Game over
     if (lives <= 0) {
         alert("Game Over!");
         location.reload();
@@ -380,8 +489,8 @@ function drawPath() {
     ctx.beginPath();
     ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
 
-    for (const point of pathPoints) {
-        ctx.lineTo(point.x, point.y);
+    for (const p of pathPoints) {
+        ctx.lineTo(p.x, p.y);
     }
 
     ctx.stroke();
@@ -403,6 +512,7 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
+renderTowerButtons();
 gameLoop();
 </script>
 </body>
