@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Main Menu</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    body {
+        font-family: Arial, sans-serif;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, #1e3c72, #2a5298);
+        color: white;
+    }
+
+    .menu {
+        background: rgba(0, 0, 0, 0.35);
+        padding: 50px;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        text-align: center;
+        min-width: 320px;
+    }
+
+    h1 {
+        font-size: 48px;
+        margin-bottom: 40px;
+        text-shadow: 2px 2px 8px rgba(0,0,0,0.5);
+    }
+
+    .menu button {
+        width: 100%;
+        padding: 18px;
+        margin: 12px 0;
+        font-size: 24px;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        background: #4caf50;
+        color: white;
+        transition: all 0.2s ease;
+    }
+
+    .menu button:hover {
+        transform: scale(1.05);
+        background: #66bb6a;
+    }
+
+    .menu button:active {
+        transform: scale(0.98);
+    }
+
+    .play-btn {
+        background: #4caf50;
+    }
+
+    .online-btn {
+        background: #2196f3;
+    }
+
+    .settings-btn {
+        background: #ff9800;
+    }
+
+    .play-btn:hover {
+        background: #66bb6a;
+    }
+
+    .online-btn:hover {
+        background: #42a5f5;
+    }
+
+    .settings-btn:hover {
+        background: #ffb74d;
+    }
+</style>
+</head>
+<body>
+
+<div class="menu">
+    <h1>My Game</h1>
+
+    <button class="play-btn" onclick="location.href='game.html'">
+        ▶ Play
+    </button>
+
+    <button class="online-btn" onclick="location.href='online.html'">
+        🌐 Play Online
+    </button>
+
+    <button class="settings-btn" onclick="location.href='settings.html'">
+        ⚙ Settings
+    </button>
+</div>
+
+</body>
+</html>
