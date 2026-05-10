@@ -2,69 +2,62 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Tower Defense - Summer Edition</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tower Defense - HD Edition</title>
 <style>
-body {
-    margin: 0;
-    background: #0d1b11;
-    color: white;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    text-align: center;
-    overflow: hidden;
-}
-
-#ui-container {
-    padding: 15px;
-    background: rgba(0,0,0,0.8);
-    border-bottom: 3px solid #27ae60;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    position: relative;
-    z-index: 10;
-}
-
-.stats {
-    display: flex;
-    gap: 40px;
-    font-size: 22px;
-    font-weight: bold;
-    margin-bottom: 10px;
-}
-
-.controls {
-    display: flex;
-    gap: 15px;
-    align-items: center;
-}
-
-button {
-    padding: 8px 15px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-}
-
-.tower-btn { background: #444; color: white; }
-.tower-btn.selected { border: 2px solid #f1c40f; }
-
-#startBtn { background: #2ecc71; }
-#sellBtn { background: #e74c3c; display:none; }
-
-canvas {
-    display: block;
-    margin: 10px auto;
-    background: #222;
-    border: 5px solid #111;
-    border-radius: 10px;
-    cursor: crosshair;
-}
+    body {
+        margin: 0;
+        background: #000;
+        color: white;
+        font-family: 'Segoe UI', Tahoma, sans-serif;
+        text-align: center;
+        overflow: hidden;
+    }
+    #ui-container {
+        padding: 10px;
+        background: rgba(20, 20, 20, 0.95);
+        border-bottom: 2px solid #27ae60;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        z-index: 10;
+    }
+    .stats { display: flex; gap: 40px; font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+    .controls { display: flex; gap: 15px; align-items: center; }
+    button {
+        padding: 8px 15px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .tower-btn { background: #444; color: white; border: 2px solid transparent; }
+    .tower-btn.selected { border-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }
+    #startBtn { background: #2ecc71; color: white; padding: 10px 20px; }
+    #sellBtn { background: #e74c3c; color: white; display: none; }
+    
+    /* This scales the 1920x1080 canvas to fit your browser window */
+    #canvas-wrapper {
+        width: 100vw;
+        height: calc(100vh - 120px);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #111;
+    }
+    canvas {
+        background: #000;
+        max-width: 100%;
+        max-height: 100%;
+        border: 2px solid #333;
+        cursor: crosshair;
+        /* Image rendering ensures the pixel art stays sharp */
+        image-rendering: crisp-edges;
+        image-rendering: pixelated;
+    }
 </style>
 </head>
-
 <body>
 
 <div id="ui-container">
@@ -73,206 +66,301 @@ canvas {
         <span>❤️ <span id="lives">20</span></span>
         <span>🌊 Wave: <span id="wave">1</span></span>
     </div>
-
     <div class="controls">
         <div id="towerButtons"></div>
         <button id="startBtn">START WAVE</button>
-        <button id="sellBtn">SELL</button>
-        <label><input type="checkbox" id="autoStart"> Auto</label>
+        <button id="sellBtn">SELL TOWER</button>
+        <label><input type="checkbox" id="autoStart"> Auto-Start</label>
     </div>
 </div>
 
-<canvas id="game" width="1920" height="1080"></canvas>
+<div id="canvas-wrapper">
+    <canvas id="game" width="1920" height="1080"></canvas>
+</div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// ===== IMAGES =====
+/* ================= ASSETS ================= */
 const bgImg = new Image();
-bgImg.src = "greensummer.png"; // make sure file exists
+bgImg.src = 'png/greensummer.png';
 
 const slimeImg = new Image();
-slimeImg.src = "slime.png";
+slimeImg.src = 'png/slime.png';
 
-// ===== GAME STATE =====
-let gold = 200;
+// GAME STATE
+let gold = 250;
 let lives = 20;
 let wave = 1;
 let waveActive = false;
 let autoStart = false;
 let selectedTypeIdx = 0;
 let selectedPlacedTower = null;
-let mousePos = {x:0,y:0};
+let mousePos = { x: 0, y: 0 };
 
-const TILT = 0.85;
-const Y_OFFSET = 50;
-
-// ===== PROJECT =====
-function project(x,y,z=0){
-    return {
-        px: x,
-        py: (y*TILT)+Y_OFFSET-z
-    };
-}
-
-// ===== PATH =====
-const path = [
-    {x:-50,y:540},{x:400,y:540},{x:400,y:200},
-    {x:900,y:200},{x:900,y:900},{x:1400,y:900},
-    {x:1400,y:400},{x:2000,y:400}
+const towerTypes = [
+    { name: "Sentry", color: "#3498db", cost: 100, range: 250, fireRate: 30, damage: 15, explosive: false },
+    { name: "Sniper", color: "#2ecc71", cost: 200, range: 550, fireRate: 110, damage: 150, explosive: false },
+    { name: "Rapid", color: "#f39c12", cost: 180, range: 200, fireRate: 8, damage: 8, explosive: false },
+    { name: "Cannon", color: "#e74c3c", cost: 300, range: 320, fireRate: 80, damage: 90, explosive: true },
+    { name: "Mega", color: "#9b59b6", cost: 600, range: 450, fireRate: 30, damage: 60, explosive: false }
 ];
 
-// ===== DRAW BACKGROUND + PATH =====
-function drawScene(){
+const enemyTypes = [
+    { name: "Slime", hp: 40, speed: 2.5, size: 35, color: "#2ecc71" },
+    { name: "Knight", hp: 180, speed: 1.5, size: 40, color: "#95a5a6", isLead: true }
+];
 
-    // IMAGE BACKGROUND
-    if(bgImg.complete && bgImg.naturalWidth > 0){
-        ctx.drawImage(bgImg,0,0,canvas.width,canvas.height);
-        return; // IMPORTANT: no path on image
+/* 
+   ================= INVISIBLE PATH ================= 
+   Edit these points to match your 'greensummer.png' track!
+*/
+const path = [
+    { x: -100, y: 540 }, 
+    { x: 400, y: 540 }, 
+    { x: 400, y: 200 },
+    { x: 1200, y: 200 }, 
+    { x: 1200, y: 800 }, 
+    { x: 1600, y: 800 },
+    { x: 1600, y: 400 }, 
+    { x: 2020, y: 400 }
+];
+
+let towers = [];
+let enemies = [];
+let bullets = [];
+let enemiesToSpawn = 0;
+let spawnTimer = 0;
+
+// Perspective Tilt (Set to 1 for flat, 0.85 for slight 2.5D)
+const TILT = 1; 
+
+/* ================= CLASSES ================= */
+class Enemy {
+    constructor() {
+        const type = (wave > 3 && Math.random() > 0.7) ? enemyTypes[1] : enemyTypes[0];
+        this.type = type;
+        this.x = path[0].x;
+        this.y = path[0].y;
+        this.pathIndex = 0;
+        this.maxHp = type.hp * (1 + (wave * 0.35));
+        this.hp = this.maxHp;
+        this.speed = type.speed * (0.8 + (wave * 0.05));
     }
 
-    // FALLBACK BACKGROUND
-    ctx.fillStyle = "#27ae60";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-
-    // DRAW PATH ONLY IF NO IMAGE
-    ctx.lineWidth = 60;
-    ctx.strokeStyle = "rgba(0,0,0,0.2)";
-    ctx.beginPath();
-    let start = project(path[0].x,path[0].y);
-    ctx.moveTo(start.px,start.py);
-
-    for(let p of path){
-        let pt = project(p.x,p.y);
-        ctx.lineTo(pt.px,pt.py);
-    }
-    ctx.stroke();
-
-    ctx.lineWidth = 50;
-    ctx.strokeStyle = "#8b6b2e";
-    ctx.beginPath();
-    ctx.moveTo(start.px,start.py);
-
-    for(let p of path){
-        let pt = project(p.x,p.y);
-        ctx.lineTo(pt.px,pt.py);
-    }
-    ctx.stroke();
-}
-
-// ===== ENEMIES / TOWERS (minimal working) =====
-let enemies=[];
-let towers=[];
-let bullets=[];
-
-class Enemy{
-    constructor(){
-        this.x=path[0].x;
-        this.y=path[0].y;
-        this.i=0;
-        this.hp=50+wave*10;
-        this.speed=1+wave*0.1;
-    }
-    update(){
-        let t=path[this.i+1];
-        if(!t) return false;
-        let dx=t.x-this.x;
-        let dy=t.y-this.y;
-        let d=Math.hypot(dx,dy);
-        if(d<this.speed)this.i++;
-        else{
-            this.x+=dx/d*this.speed;
-            this.y+=dy/d*this.speed;
+    update() {
+        const target = path[this.pathIndex + 1];
+        if (!target) { lives--; return false; }
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < this.speed) this.pathIndex++;
+        else {
+            this.x += (dx / dist) * this.speed;
+            this.y += (dy / dist) * this.speed;
         }
         return true;
     }
-    draw(){
-        let p=project(this.x,this.y);
-        ctx.fillStyle="red";
-        ctx.beginPath();
-        ctx.arc(p.px,p.py,15,0,Math.PI*2);
-        ctx.fill();
+
+    draw() {
+        if (this.type.name === "Slime" && slimeImg.complete) {
+            ctx.drawImage(slimeImg, this.x - this.type.size, this.y - this.type.size, this.type.size * 2, this.type.size * 2);
+        } else {
+            ctx.fillStyle = this.type.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.type.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // HP Bar
+        ctx.fillStyle = "black";
+        ctx.fillRect(this.x - 30, this.y - this.type.size - 15, 60, 8);
+        ctx.fillStyle = "#2ecc71";
+        ctx.fillRect(this.x - 30, this.y - this.type.size - 15, 60 * (this.hp / this.maxHp), 8);
     }
 }
 
-class Tower{
-    constructor(x,y){
-        this.x=x;
-        this.y=y;
-        this.cool=0;
+class Tower {
+    constructor(x, y, type) {
+        this.x = x; this.y = y;
+        this.type = type;
+        this.cooldown = 0;
+        this.angle = 0;
     }
-    update(){
-        if(this.cool>0)this.cool--;
-        let e=enemies[0];
-        if(e && this.cool===0){
-            bullets.push({x:this.x,y:this.y,tx:e});
-            this.cool=30;
+    update() {
+        if (this.cooldown > 0) this.cooldown--;
+        let target = enemies.find(e => Math.hypot(e.x - this.x, e.y - this.y) < this.type.range);
+        if (target) {
+            this.angle = Math.atan2(target.y - this.y, target.x - this.x);
+            if (this.cooldown <= 0) {
+                bullets.push(new Bullet(this.x, this.y, target, this.type));
+                this.cooldown = this.type.fireRate;
+            }
         }
     }
-    draw(){
-        let p=project(this.x,this.y);
-        ctx.fillStyle="blue";
-        ctx.fillRect(p.px-10,p.py-10,20,20);
+    draw() {
+        if (selectedPlacedTower === this) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.type.range, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(255,255,255,0.1)";
+            ctx.fill();
+            ctx.strokeStyle = "white";
+            ctx.stroke();
+        }
+        ctx.fillStyle = "#333";
+        ctx.fillRect(this.x - 30, this.y - 30, 60, 60);
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.fillStyle = this.type.color;
+        ctx.fillRect(0, -10, 45, 20);
+        ctx.restore();
     }
 }
 
-function update(){
-    enemies=enemies.filter(e=>e.update());
-    towers.forEach(t=>t.update());
-
-    bullets=bullets.filter(b=>{
-        let e=b.tx;
-        let dx=e.x-b.x;
-        let dy=e.y-b.y;
-        let d=Math.hypot(dx,dy);
-        if(d<10){
-            e.hp-=10;
-            if(e.hp<=0) enemies.splice(enemies.indexOf(e),1);
+class Bullet {
+    constructor(x, y, target, type) {
+        this.x = x; this.y = y;
+        this.target = target;
+        this.type = type;
+        this.speed = 20;
+    }
+    update() {
+        if (!enemies.includes(this.target)) return false;
+        const dx = this.target.x - this.x;
+        const dy = this.target.y - this.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < this.speed) {
+            if (!this.target.type.isLead || this.type.explosive) this.target.hp -= this.type.damage;
             return false;
         }
-        b.x+=dx/d*6;
-        b.y+=dy/d*6;
+        this.x += (dx / dist) * this.speed;
+        this.y += (dy / dist) * this.speed;
         return true;
-    });
-
-    document.getElementById("gold").innerText=gold;
-    document.getElementById("lives").innerText=lives;
-    document.getElementById("wave").innerText=wave;
-}
-
-function draw(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    drawScene();
-
-    enemies.forEach(e=>e.draw());
-    towers.forEach(t=>t.draw());
-
-    ctx.fillStyle="yellow";
-    bullets.forEach(b=>{
-        let p=project(b.x,b.y);
+    }
+    draw() {
+        ctx.fillStyle = "yellow";
         ctx.beginPath();
-        ctx.arc(p.px,p.py,5,0,Math.PI*2);
+        ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
         ctx.fill();
+    }
+}
+
+/* ================= CORE LOOP ================= */
+
+function update() {
+    if (waveActive) {
+        spawnTimer++;
+        if (spawnTimer > 30 && enemiesToSpawn > 0) {
+            enemies.push(new Enemy());
+            enemiesToSpawn--;
+            spawnTimer = 0;
+        }
+        if (enemiesToSpawn === 0 && enemies.length === 0) {
+            waveActive = false;
+            wave++;
+            gold += 100;
+            if (autoStart) startWave();
+        }
+    }
+    enemies.forEach((e, i) => { 
+        if(!e.update()) enemies.splice(i, 1);
+        else if(e.hp <= 0) { gold += 20; enemies.splice(i, 1); }
+    });
+    towers.forEach(t => t.update());
+    bullets = bullets.filter(b => b.update());
+
+    document.getElementById("gold").innerText = gold;
+    document.getElementById("lives").innerText = lives;
+    document.getElementById("wave").innerText = wave;
+    if (lives <= 0) { alert("Game Over!"); location.reload(); }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 1. DRAW BACKGROUND BEHIND EVERYTHING
+    if (bgImg.complete) {
+        ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+    } else {
+        ctx.fillStyle = "#1b4d2e";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "white";
+        ctx.fillText("Loading Background...", 960, 540);
+    }
+
+    // 2. DRAW RANGE PREVIEW
+    if (!waveActive && !selectedPlacedTower) {
+        ctx.beginPath();
+        ctx.arc(mousePos.x, mousePos.y, towerTypes[selectedTypeIdx].range, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        ctx.fill();
+    }
+
+    // 3. DRAW GAME OBJECTS
+    towers.forEach(t => t.draw());
+    enemies.forEach(e => e.draw());
+    bullets.forEach(b => b.draw());
+}
+
+function startWave() {
+    if (waveActive) return;
+    enemiesToSpawn = 5 + (wave * 2);
+    waveActive = true;
+}
+
+/* ================= UI & CONTROLS ================= */
+
+function renderButtons() {
+    const container = document.getElementById("towerButtons");
+    container.innerHTML = "";
+    towerTypes.forEach((t, i) => {
+        const btn = document.createElement("button");
+        btn.className = "tower-btn" + (selectedTypeIdx === i ? " selected" : "");
+        btn.innerHTML = `${t.name}<br>💰${t.cost}`;
+        btn.onclick = () => { selectedTypeIdx = i; selectedPlacedTower = null; renderButtons(); };
+        container.appendChild(btn);
     });
 }
 
-function loop(){
-    update();
-    draw();
-    requestAnimationFrame(loop);
-}
-loop();
+canvas.addEventListener("mousemove", e => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    mousePos.x = (e.clientX - rect.left) * scaleX;
+    mousePos.y = (e.clientY - rect.top) * scaleY;
+});
 
-// ===== INPUT =====
-canvas.onclick=(e)=>{
-    const r=canvas.getBoundingClientRect();
-    let x=e.clientX-r.left;
-    let y=(e.clientY-r.top - Y_OFFSET)/TILT;
-    towers.push(new Tower(x,y));
+canvas.addEventListener("click", () => {
+    const clicked = towers.find(t => Math.hypot(t.x - mousePos.x, t.y - mousePos.y) < 40);
+    if (clicked) {
+        selectedPlacedTower = clicked;
+        document.getElementById("sellBtn").style.display = "block";
+    } else {
+        const type = towerTypes[selectedTypeIdx];
+        if (gold >= type.cost) {
+            towers.push(new Tower(mousePos.x, mousePos.y, type));
+            gold -= type.cost;
+            selectedPlacedTower = null;
+            document.getElementById("sellBtn").style.display = "none";
+        }
+    }
+    renderButtons();
+});
+
+document.getElementById("startBtn").onclick = startWave;
+document.getElementById("sellBtn").onclick = () => {
+    if (selectedPlacedTower) {
+        gold += Math.floor(selectedPlacedTower.type.cost * 0.7);
+        towers = towers.filter(t => t !== selectedPlacedTower);
+        selectedPlacedTower = null;
+        document.getElementById("sellBtn").style.display = "none";
+    }
 };
 
-setInterval(()=>enemies.push(new Enemy()),2000);
+renderButtons();
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+loop();
 
 </script>
 </body>
