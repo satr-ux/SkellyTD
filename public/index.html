@@ -1,43 +1,48 @@
+<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tower Defense</title>
 <style>
 body {
     margin: 0;
-    background: #1e1e1e;
+    background: #1b1b1b;
     color: white;
     font-family: Arial, sans-serif;
     text-align: center;
 }
 
 h1 {
-    margin: 10px;
+    margin: 10px 0;
 }
 
 #ui {
-    margin: 10px;
+    padding: 10px;
     font-size: 20px;
+    background: #111;
 }
 
 canvas {
     background: #2c3e50;
     border: 2px solid white;
+    display: block;
+    margin: 0 auto;
     cursor: crosshair;
 }
 </style>
 </head>
 <body>
 <h1>🏰 Tower Defense</h1>
+
 <div id="ui">
     Gold: <span id="gold">100</span> |
     Lives: <span id="lives">20</span> |
-    Wave: <span id="wave">1</span>
-    <br>
-    Click to place tower (Cost: 50)
+    Wave: <span id="wave">1</span><br>
+    Click anywhere off the path to place a tower (Cost: 50)
 </div>
+
 <canvas id="game" width="800" height="500"></canvas>
 
 <script>
@@ -52,32 +57,112 @@ const goldEl = document.getElementById("gold");
 const livesEl = document.getElementById("lives");
 const waveEl = document.getElementById("wave");
 
-const path = [
-    {x: 0, y: 250},
-    {x: 200, y: 250},
-    {x: 200, y: 100},
-    {x: 500, y: 100},
-    {x: 500, y: 400},
-    {x: 800, y: 400}
+const pathPoints = [
+    { x: 0, y: 250 },
+    { x: 200, y: 250 },
+    { x: 200, y: 100 },
+    { x: 500, y: 100 },
+    { x: 500, y: 400 },
+    { x: 800, y: 400 }
 ];
 
 const towers = [];
 const enemies = [];
 const bullets = [];
 
+/* =========================
+   ENEMY TYPES
+========================= */
+const enemyTypes = [
+    {
+        name: "Slime",
+        color: "lime",
+        baseHp: 20,
+        baseSpeed: 1.4,
+        radius: 12,
+        reward: 5
+    },
+    {
+        name: "Goblin",
+        color: "green",
+        baseHp: 40,
+        baseSpeed: 1.8,
+        radius: 14,
+        reward: 8
+    },
+    {
+        name: "Wolf",
+        color: "gray",
+        baseHp: 30,
+        baseSpeed: 2.8,
+        radius: 10,
+        reward: 10
+    },
+    {
+        name: "Orc",
+        color: "darkgreen",
+        baseHp: 90,
+        baseSpeed: 1.1,
+        radius: 18,
+        reward: 15
+    },
+    {
+        name: "Troll",
+        color: "purple",
+        baseHp: 220,
+        baseSpeed: 0.8,
+        radius: 24,
+        reward: 25
+    },
+    {
+        name: "Dragon",
+        color: "orange",
+        baseHp: 500,
+        baseSpeed: 1.5,
+        radius: 28,
+        reward: 50
+    }
+];
+
+function getEnemyType() {
+    if (wave < 3) {
+        return enemyTypes[Math.floor(Math.random() * 2)];
+    } else if (wave < 6) {
+        return enemyTypes[Math.floor(Math.random() * 4)];
+    } else if (wave < 10) {
+        return enemyTypes[Math.floor(Math.random() * 5)];
+    } else {
+        return enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+    }
+}
+
+/* =========================
+   CLASSES
+========================= */
 class Enemy {
     constructor() {
-        this.x = path[0].x;
-        this.y = path[0].y;
-        this.hp = 30 + wave * 10;
+        const type = getEnemyType();
+
+        this.name = type.name;
+        this.color = type.color;
+        this.radius = type.radius;
+        this.reward = type.reward;
+
+        const hpMultiplier = 1 + (wave - 1) * 0.25;
+        const speedMultiplier = 1 + (wave - 1) * 0.03;
+
+        this.hp = Math.floor(type.baseHp * hpMultiplier);
         this.maxHp = this.hp;
-        this.speed = 1 + wave * 0.1;
+        this.speed = type.baseSpeed * speedMultiplier;
+
+        this.x = pathPoints[0].x;
+        this.y = pathPoints[0].y;
         this.pathIndex = 0;
-        this.radius = 15;
     }
 
     update() {
-        const target = path[this.pathIndex + 1];
+        const target = pathPoints[this.pathIndex + 1];
+
         if (!target) {
             lives--;
             return false;
@@ -90,24 +175,37 @@ class Enemy {
         if (dist < this.speed) {
             this.pathIndex++;
         } else {
-            this.x += dx / dist * this.speed;
-            this.y += dy / dist * this.speed;
+            this.x += (dx / dist) * this.speed;
+            this.y += (dy / dist) * this.speed;
         }
 
         return true;
     }
 
     draw() {
-        ctx.fillStyle = "red";
+        ctx.fillStyle = this.color;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
 
         // HP bar
+        const barWidth = this.radius * 2;
+
         ctx.fillStyle = "black";
-        ctx.fillRect(this.x - 15, this.y - 25, 30, 5);
+        ctx.fillRect(
+            this.x - barWidth / 2,
+            this.y - this.radius - 12,
+            barWidth,
+            5
+        );
+
         ctx.fillStyle = "lime";
-        ctx.fillRect(this.x - 15, this.y - 25, 30 * (this.hp / this.maxHp), 5);
+        ctx.fillRect(
+            this.x - barWidth / 2,
+            this.y - this.radius - 12,
+            barWidth * (this.hp / this.maxHp),
+            5
+        );
     }
 }
 
@@ -124,6 +222,7 @@ class Tower {
         if (this.cooldown > 0) this.cooldown--;
 
         let target = null;
+
         for (const enemy of enemies) {
             const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
             if (dist <= this.range) {
@@ -172,8 +271,9 @@ class Bullet {
             return false;
         }
 
-        this.x += dx / dist * this.speed;
-        this.y += dy / dist * this.speed;
+        this.x += (dx / dist) * this.speed;
+        this.y += (dy / dist) * this.speed;
+
         return true;
     }
 
@@ -185,17 +285,21 @@ class Bullet {
     }
 }
 
-canvas.addEventListener("click", e => {
+/* =========================
+   TOWER PLACEMENT
+========================= */
+canvas.addEventListener("click", (e) => {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
     if (gold < 50) return;
 
-    // Prevent placing on path
-    for (let i = 0; i < path.length - 1; i++) {
-        const a = path[i];
-        const b = path[i + 1];
+    // Don't place on path
+    for (let i = 0; i < pathPoints.length - 1; i++) {
+        const a = pathPoints[i];
+        const b = pathPoints[i + 1];
+
         const minX = Math.min(a.x, b.x) - 30;
         const maxX = Math.max(a.x, b.x) + 30;
         const minY = Math.min(a.y, b.y) - 30;
@@ -210,23 +314,22 @@ canvas.addEventListener("click", e => {
     gold -= 50;
 });
 
+/* =========================
+   GAME LOOP
+========================= */
 let spawnTimer = 0;
 let enemiesToSpawn = 5;
 
 function update() {
     spawnTimer++;
+
     if (spawnTimer >= 60 && enemiesToSpawn > 0) {
         enemies.push(new Enemy());
-        spawnTimer = 0;
         enemiesToSpawn--;
+        spawnTimer = 0;
     }
 
-    if (enemiesToSpawn === 0 && enemies.length === 0) {
-        wave++;
-        enemiesToSpawn = 5 + wave * 2;
-        gold += 100;
-    }
-
+    // Update enemies
     for (let i = enemies.length - 1; i >= 0; i--) {
         if (!enemies[i].update()) {
             enemies.splice(i, 1);
@@ -234,19 +337,31 @@ function update() {
         }
 
         if (enemies[i].hp <= 0) {
+            gold += enemies[i].reward;
             enemies.splice(i, 1);
-            gold += 10;
         }
     }
 
-    for (const tower of towers) tower.update();
+    // Update towers
+    for (const tower of towers) {
+        tower.update();
+    }
 
+    // Update bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
         if (!bullets[i].update()) {
             bullets.splice(i, 1);
         }
     }
 
+    // New wave
+    if (enemiesToSpawn === 0 && enemies.length === 0) {
+        wave++;
+        enemiesToSpawn = 5 + wave * 3;
+        gold += 50 + wave * 20;
+    }
+
+    // Game over
     if (lives <= 0) {
         alert("Game Over!");
         location.reload();
@@ -261,11 +376,14 @@ function drawPath() {
     ctx.strokeStyle = "#c2b280";
     ctx.lineWidth = 40;
     ctx.lineCap = "round";
+
     ctx.beginPath();
-    ctx.moveTo(path[0].x, path[0].y);
-    for (const p of path) {
-        ctx.lineTo(p.x, p.y);
+    ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+
+    for (const point of pathPoints) {
+        ctx.lineTo(point.x, point.y);
     }
+
     ctx.stroke();
 }
 
