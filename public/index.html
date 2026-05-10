@@ -1,1 +1,291 @@
-terter
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tower Defense</title>
+<style>
+body {
+    margin: 0;
+    background: #1e1e1e;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+
+h1 {
+    margin: 10px;
+}
+
+#ui {
+    margin: 10px;
+    font-size: 20px;
+}
+
+canvas {
+    background: #2c3e50;
+    border: 2px solid white;
+    cursor: crosshair;
+}
+</style>
+</head>
+<body>
+<h1>🏰 Tower Defense</h1>
+<div id="ui">
+    Gold: <span id="gold">100</span> |
+    Lives: <span id="lives">20</span> |
+    Wave: <span id="wave">1</span>
+    <br>
+    Click to place tower (Cost: 50)
+</div>
+<canvas id="game" width="800" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let gold = 100;
+let lives = 20;
+let wave = 1;
+
+const goldEl = document.getElementById("gold");
+const livesEl = document.getElementById("lives");
+const waveEl = document.getElementById("wave");
+
+const path = [
+    {x: 0, y: 250},
+    {x: 200, y: 250},
+    {x: 200, y: 100},
+    {x: 500, y: 100},
+    {x: 500, y: 400},
+    {x: 800, y: 400}
+];
+
+const towers = [];
+const enemies = [];
+const bullets = [];
+
+class Enemy {
+    constructor() {
+        this.x = path[0].x;
+        this.y = path[0].y;
+        this.hp = 30 + wave * 10;
+        this.maxHp = this.hp;
+        this.speed = 1 + wave * 0.1;
+        this.pathIndex = 0;
+        this.radius = 15;
+    }
+
+    update() {
+        const target = path[this.pathIndex + 1];
+        if (!target) {
+            lives--;
+            return false;
+        }
+
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < this.speed) {
+            this.pathIndex++;
+        } else {
+            this.x += dx / dist * this.speed;
+            this.y += dy / dist * this.speed;
+        }
+
+        return true;
+    }
+
+    draw() {
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // HP bar
+        ctx.fillStyle = "black";
+        ctx.fillRect(this.x - 15, this.y - 25, 30, 5);
+        ctx.fillStyle = "lime";
+        ctx.fillRect(this.x - 15, this.y - 25, 30 * (this.hp / this.maxHp), 5);
+    }
+}
+
+class Tower {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.range = 120;
+        this.fireRate = 30;
+        this.cooldown = 0;
+    }
+
+    update() {
+        if (this.cooldown > 0) this.cooldown--;
+
+        let target = null;
+        for (const enemy of enemies) {
+            const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+            if (dist <= this.range) {
+                target = enemy;
+                break;
+            }
+        }
+
+        if (target && this.cooldown <= 0) {
+            bullets.push(new Bullet(this.x, this.y, target));
+            this.cooldown = this.fireRate;
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = "cyan";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(0,255,255,0.15)";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+}
+
+class Bullet {
+    constructor(x, y, target) {
+        this.x = x;
+        this.y = y;
+        this.target = target;
+        this.speed = 6;
+        this.damage = 15;
+    }
+
+    update() {
+        if (!enemies.includes(this.target)) return false;
+
+        const dx = this.target.x - this.x;
+        const dy = this.target.y - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < this.speed) {
+            this.target.hp -= this.damage;
+            return false;
+        }
+
+        this.x += dx / dist * this.speed;
+        this.y += dy / dist * this.speed;
+        return true;
+    }
+
+    draw() {
+        ctx.fillStyle = "yellow";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+canvas.addEventListener("click", e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (gold < 50) return;
+
+    // Prevent placing on path
+    for (let i = 0; i < path.length - 1; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        const minX = Math.min(a.x, b.x) - 30;
+        const maxX = Math.max(a.x, b.x) + 30;
+        const minY = Math.min(a.y, b.y) - 30;
+        const maxY = Math.max(a.y, b.y) + 30;
+
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+            return;
+        }
+    }
+
+    towers.push(new Tower(x, y));
+    gold -= 50;
+});
+
+let spawnTimer = 0;
+let enemiesToSpawn = 5;
+
+function update() {
+    spawnTimer++;
+    if (spawnTimer >= 60 && enemiesToSpawn > 0) {
+        enemies.push(new Enemy());
+        spawnTimer = 0;
+        enemiesToSpawn--;
+    }
+
+    if (enemiesToSpawn === 0 && enemies.length === 0) {
+        wave++;
+        enemiesToSpawn = 5 + wave * 2;
+        gold += 100;
+    }
+
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        if (!enemies[i].update()) {
+            enemies.splice(i, 1);
+            continue;
+        }
+
+        if (enemies[i].hp <= 0) {
+            enemies.splice(i, 1);
+            gold += 10;
+        }
+    }
+
+    for (const tower of towers) tower.update();
+
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        if (!bullets[i].update()) {
+            bullets.splice(i, 1);
+        }
+    }
+
+    if (lives <= 0) {
+        alert("Game Over!");
+        location.reload();
+    }
+
+    goldEl.textContent = gold;
+    livesEl.textContent = lives;
+    waveEl.textContent = wave;
+}
+
+function drawPath() {
+    ctx.strokeStyle = "#c2b280";
+    ctx.lineWidth = 40;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (const p of path) {
+        ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawPath();
+
+    for (const tower of towers) tower.draw();
+    for (const enemy of enemies) enemy.draw();
+    for (const bullet of bullets) bullet.draw();
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
