@@ -8,6 +8,9 @@ bgImg.src = MAP_IMAGE_SRC; // Pulls from index.html config
 const slimeImg = new Image();
 slimeImg.src = 'png/slime.png';
 
+const knightImg = new Image();
+knightImg.src = 'png/troll.png'; // Knight uses troll.png
+
 // GAME STATE
 let gold = 250;
 let lives = 20;
@@ -65,14 +68,23 @@ class Enemy {
     }
 
     draw() {
+        // Render Slime Image
         if (this.type.name === "Slime" && slimeImg.complete) {
             ctx.drawImage(slimeImg, this.x - this.type.size, this.y - this.type.size, this.type.size * 2, this.type.size * 2);
-        } else {
+        } 
+        // Render Knight (Troll) Image
+        else if (this.type.name === "Knight" && knightImg.complete) {
+            ctx.drawImage(knightImg, this.x - this.type.size, this.y - this.type.size, this.type.size * 2, this.type.size * 2);
+        }
+        // Fallback to circle if images fail
+        else {
             ctx.fillStyle = this.type.color;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.type.size, 0, Math.PI * 2);
             ctx.fill();
         }
+
+        // Health Bar
         ctx.fillStyle = "black";
         ctx.fillRect(this.x - 30, this.y - this.type.size - 15, 60, 8);
         ctx.fillStyle = "#2ecc71";
