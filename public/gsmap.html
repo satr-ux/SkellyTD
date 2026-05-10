@@ -1,1 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tower Defense - Summer Edition</title>
+<style>
+    body {
+        margin: 0;
+        background: #0d1b11;
+        color: white;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        text-align: center;
+        overflow: hidden;
+    }
+    #ui-container {
+        padding: 15px;
+        background: rgba(0, 0, 0, 0.8);
+        border-bottom: 3px solid #27ae60;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    .stats {
+        display: flex;
+        gap: 40px;
+        font-size: 22px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .controls {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+    button {
+        padding: 8px 15px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: 0.2s;
+    }
+    .tower-btn { background: #444; color: white; border: 2px solid transparent; }
+    .tower-btn.selected { border-color: #f1c40f; transform: scale(1.05); }
+    #startBtn { background: #2ecc71; color: white; padding: 12px 20px; }
+    #sellBtn { background: #e74c3c; color: white; display: none; }
+    canvas {
+        display: block;
+        margin: 10px auto;
+        background: #222;
+        border: 5px solid #111;
+        border-radius: 10px;
+        cursor: crosshair;
+    }
+</style>
+</head>
+<body>
 
+<div id="ui-container">
+    <div class="stats">
+        <span>💰 <span id="gold">200</span></span>
+        <span>❤️ <span id="lives">20</span></span>
+        <span>🌊 Wave: <span id="wave">1</span></span>
+    </div>
+    <div class="controls">
+        <div id="towerButtons"></div>
+        <button id="startBtn">START WAVE</button>
+        <button id="sellBtn">SELL TOWER</button>
+        <label><input type="checkbox" id="autoStart"> Auto-Start</label>
+    </div>
+</div>
+
+<canvas id="game" width="1000" height="600"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// ASSETS
+const bgImg = new Image();
+bgImg.src = 'greensummer.png';
+
+const slimeImg = new Image();
+slimeImg.src = 'slime.png';
+
+// GAME STATE
+let gold = 200;
+let lives = 20;
+let wave = 1;
+let waveActive = false;
+let autoStart = false;
+let selectedTypeIdx = 0;
+let selectedPlacedTower = null;
+let mousePos = { x: 0, y: 0 };
+
+const towerTypes = [
+    { name: "Sentry", color: "#3498db", cost: 100, range: 130, fireRate: 30, damage: 15, explosive: false },
+    { name: "Sniper", color: "#2ecc71", cost: 200, range: 280, fireRate: 110, damage: 150, explosive: false },
+    { name: "Rapid", color: "#f39c12", cost: 180, range: 110, fireRate: 8, damage: 8, explosive: false },
+    { name: "Cannon", color: "#e74c3c", cost: 300, range: 160, fireRate: 80, damage: 90, explosive: true },
+    { name: "Mega", color: "#9b59b6", cost: 600, range: 220, fireRate: 30, damage: 60, explosive: false }
+];
+
+const enemyTypes = [
+    { name: "Slime", hp: 30, speed: 1.2, size: 18, color: "#2ecc71", isLead: false },
+    { name: "Knight", hp: 140, speed: 0.7, size: 20, color: "#95a5a6", isLead: true },
+    { name: "Boss", hp: 800, speed: 0.5, size: 30, color: "#c0392b", isLead: false }
+];
+
+const path = [
+    { x: -50, y: 300 }, { x: 200, y: 300 }, { x: 200, y: 120 },
+    { x: 550, y: 120 }, { x: 550, y: 480 }, { x: 850, y: 480 },
+    { x: 850, y: 250 }, { x: 1050, y: 250 }
+];
+
+let towers = [];
+let enemies = [];
+let bullets = [];
+let enemiesToSpawn = 0;
+let spawnTimer = 0;
+
+/* ================= 2.5D PROJECTION (Adjusted Tilt) ================= */
+const TILT = 0.85; // Less "squashed" than before
+const Y_OFFSET = 50;
+
+function project(x, y, z = 0) {
+    return {
+        px: x,
+        py: (y * TILT) + Y_OFFSET - z
+    };
+}
+
+/* ================= CLASSES ================= */
+class Enemy {
+    constructor() {
+        const type = (wave % 5 === 0) ? enemyTypes[2] : (wave > 3 && Math.random() > 0.7) ? enemyTypes[1] : enemyTypes[0];
+        this.type = type;
+        this.x = path[0].x;
+        this.y = path[0].y;
+        this.pathIndex = 0;
+        
+        // Progressive Difficulty
+        const difficulty = 1 + (wave * 0.25);
+        this.maxHp = type.hp * difficulty;
+        this.hp = this.maxHp;
+        // Start 30% slower than base, increase 5% per wave
+        this.speed = type.speed * (0.7 + (wave * 0.05));
+    }
+
+    update() {
+        const target = path[this.pathIndex + 1];
+        if (!target) { lives--; return false; }
+
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < this.speed) this.pathIndex++;
+        else {
+            this.x += (dx / dist) * this.speed;
+            this.y += (dy / dist) * this.speed;
+        }
+        return true;
+    }
+
+    draw() {
+        const p = project(this.x, this.y);
+        
+        // Shadow
+        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.beginPath();
+        ctx.ellipse(p.px, p.py + 4, this.type.size, this.type.size/2, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        // Sprite or Shape
+        if (this.type.name === "Slime" && slimeImg.complete) {
+            ctx.drawImage(slimeImg, p.px - this.type.size, p.py - this.type.size, this.type.size*2, this.type.size*2);
+        } else {
+            ctx.fillStyle = this.type.color;
+            ctx.beginPath();
+            ctx.arc(p.px, p.py, this.type.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        if (this.type.isLead) {
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(p.px - this.type.size, p.py - this.type.size, this.type.size*2, this.type.size*2);
+        }
+
+        // HP Bar
+        const barW = this.type.size * 2;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(p.px - barW/2, p.py - this.type.size - 10, barW, 4);
+        ctx.fillStyle = "#2ecc71";
+        ctx.fillRect(p.px - barW/2, p.py - this.type.size - 10, barW * (this.hp/this.maxHp), 4);
+    }
+}
+
+class Tower {
+    constructor(x, y, type) {
+        this.x = x; this.y = y;
+        this.type = type;
+        this.cooldown = 0;
+        this.angle = 0;
+        this.height = 30;
+    }
+
+    update() {
+        if (this.cooldown > 0) this.cooldown--;
+        let target = enemies.find(e => Math.hypot(e.x - this.x, e.y - this.y) < this.type.range);
+        
+        if (target) {
+            this.angle = Math.atan2(target.y - this.y, target.x - this.x);
+            if (this.cooldown <= 0) {
+                bullets.push(new Bullet(this.x, this.y, target, this.type));
+                this.cooldown = this.type.fireRate;
+            }
+        }
+    }
+
+    draw() {
+        const base = project(this.x, this.y);
+        const top = project(this.x, this.y, this.height);
+
+        if (selectedPlacedTower === this) {
+            ctx.beginPath();
+            ctx.ellipse(base.px, base.py, this.type.range, this.type.range * TILT, 0, 0, Math.PI*2);
+            ctx.fillStyle = "rgba(255,255,255,0.1)";
+            ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.4)";
+            ctx.stroke();
+        }
+
+        // Side Walls
+        ctx.fillStyle = "#2c3e50";
+        ctx.fillRect(base.px - 15, top.py, 30, base.py - top.py);
+
+        // Top Face
+        ctx.fillStyle = this.type.color;
+        ctx.beginPath();
+        ctx.ellipse(top.px, top.py, 15, 15 * TILT, 0, 0, Math.PI*2);
+        ctx.fill();
+        
+        // Turret
+        ctx.save();
+        ctx.translate(top.px, top.py);
+        ctx.rotate(this.angle);
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, -4, 22, 8);
+        ctx.restore();
+    }
+}
+
+class Bullet {
+    constructor(x, y, target, type) {
+        this.x = x; this.y = y;
+        this.z = 30;
+        this.target = target;
+        this.type = type;
+        this.speed = 14;
+    }
+
+    update() {
+        if (!enemies.includes(this.target)) return false;
+        const dx = this.target.x - this.x;
+        const dy = this.target.y - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < this.speed) {
+            if (!this.target.type.isLead || this.type.explosive) {
+                this.target.hp -= this.type.damage;
+            }
+            return false;
+        }
+
+        this.x += (dx / dist) * this.speed;
+        this.y += (dy / dist) * this.speed;
+        this.z = Math.max(0, this.z - 1.5);
+        return true;
+    }
+
+    draw() {
+        const p = project(this.x, this.y, this.z);
+        ctx.fillStyle = this.type.explosive ? "#e74c3c" : "#f1c40f";
+        ctx.beginPath();
+        ctx.arc(p.px, p.py, 4, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+/* ================= ENGINE ================= */
+
+function drawScene() {
+    // Draw Background Image
+    if (bgImg.complete) {
+        ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+    } else {
+        ctx.fillStyle = "#27ae60";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Path
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    
+    // Path Depth
+    ctx.lineWidth = 50;
+    ctx.strokeStyle = "rgba(0,0,0,0.2)";
+    ctx.beginPath();
+    const start = project(path[0].x, path[0].y);
+    ctx.moveTo(start.px, start.py + 4);
+    path.forEach(pt => {
+        const p = project(pt.x, pt.y);
+        ctx.lineTo(p.px, p.py + 4);
+    });
+    ctx.stroke();
+
+    // Path Surface
+    ctx.lineWidth = 44;
+    ctx.strokeStyle = "#967117";
+    ctx.beginPath();
+    ctx.moveTo(start.px, start.py);
+    path.forEach(pt => {
+        const p = project(pt.x, pt.y);
+        ctx.lineTo(p.px, p.py);
+    });
+    ctx.stroke();
+}
+
+function update() {
+    if (waveActive) {
+        spawnTimer++;
+        if (spawnTimer > 45 && enemiesToSpawn > 0) {
+            enemies.push(new Enemy());
+            enemiesToSpawn--;
+            spawnTimer = 0;
+        }
+        if (enemiesToSpawn === 0 && enemies.length === 0) {
+            waveActive = false;
+            wave++;
+            if (autoStart) startWave();
+        }
+    }
+
+    enemies.forEach((e, i) => { 
+        if(!e.update()) enemies.splice(i, 1);
+        else if(e.hp <= 0) { gold += 15; enemies.splice(i, 1); }
+    });
+
+    towers.forEach(t => t.update());
+    bullets = bullets.filter(b => b.update());
+
+    document.getElementById("gold").innerText = gold;
+    document.getElementById("lives").innerText = lives;
+    document.getElementById("wave").innerText = wave;
+    document.getElementById("startBtn").style.display = waveActive ? "none" : "block";
+
+    if (lives <= 0) { alert("Game Over! Waves survived: " + (wave-1)); location.reload(); }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawScene();
+    
+    // Placement Preview
+    if (!waveActive && !selectedPlacedTower) {
+        const p = project(mousePos.x, mousePos.y);
+        ctx.beginPath();
+        ctx.ellipse(p.px, p.py, towerTypes[selectedTypeIdx].range, towerTypes[selectedTypeIdx].range * TILT, 0, 0, Math.PI*2);
+        ctx.fillStyle = "rgba(255,255,255,0.15)";
+        ctx.fill();
+    }
+
+    enemies.forEach(e => e.draw());
+    towers.forEach(t => t.draw());
+    bullets.forEach(b => b.draw());
+}
+
+function startWave() {
+    if (waveActive) return;
+    enemiesToSpawn = 5 + (wave * 2);
+    waveActive = true;
+}
+
+/* ================= INPUT ================= */
+
+function renderButtons() {
+    const container = document.getElementById("towerButtons");
+    container.innerHTML = "";
+    towerTypes.forEach((t, i) => {
+        const btn = document.createElement("button");
+        btn.className = "tower-btn" + (selectedTypeIdx === i ? " selected" : "");
+        btn.innerHTML = `${t.name}<br>💰${t.cost}`;
+        btn.onclick = () => { selectedTypeIdx = i; selectedPlacedTower = null; renderButtons(); };
+        container.appendChild(btn);
+    });
+}
+
+canvas.addEventListener("mousemove", e => {
+    const rect = canvas.getBoundingClientRect();
+    mousePos.x = e.clientX - rect.left;
+    mousePos.y = (e.clientY - rect.top - Y_OFFSET) / TILT; 
+});
+
+canvas.addEventListener("click", () => {
+    const clicked = towers.find(t => Math.hypot(t.x - mousePos.x, t.y - mousePos.y) < 25);
+    if (clicked) {
+        selectedPlacedTower = clicked;
+        document.getElementById("sellBtn").style.display = "block";
+    } else {
+        const type = towerTypes[selectedTypeIdx];
+        if (gold >= type.cost) {
+            towers.push(new Tower(mousePos.x, mousePos.y, type));
+            gold -= type.cost;
+            selectedPlacedTower = null;
+            document.getElementById("sellBtn").style.display = "none";
+        }
+    }
+    renderButtons();
+});
+
+document.getElementById("startBtn").onclick = startWave;
+document.getElementById("autoStart").onchange = (e) => autoStart = e.target.checked;
+document.getElementById("sellBtn").onclick = () => {
+    if (selectedPlacedTower) {
+        gold += Math.floor(selectedPlacedTower.type.cost * 0.7);
+        towers = towers.filter(t => t !== selectedPlacedTower);
+        selectedPlacedTower = null;
+        document.getElementById("sellBtn").style.display = "none";
+    }
+};
+
+renderButtons();
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+loop();
+
+</script>
+</body>
+</html>
