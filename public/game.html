@@ -1,1 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Game Map Selector</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #222; color: white; }
+        .menu-container { margin-top: 50px; }
+        .map-button { 
+            padding: 10px 20px; margin: 5px; cursor: pointer; 
+            background: #444; color: white; border: 1px solid #666;
+        }
+        .map-button:hover { background: #666; }
+        .random-btn { 
+            padding: 15px 30px; font-weight: bold; background: #27ae60; 
+            color: white; border: none; border-radius: 5px; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
 
+    <h1>Select Your Map</h1>
+    
+    <div id="map-list" class="menu-container"></div>
+    
+    <hr style="margin: 30px; border: 0.5px solid #444;">
+    
+    <button class="random-btn" onclick="playRandom()">RANDOM MAP</button>
+
+    <script>
+        // --- EASY ADD SECTION ---
+        // Just add your filenames here (make sure the .html files are in the same folder)
+        const maps = [
+            "gsmap.html",
+            "rnmap.html"
+        ];
+
+        const mapListDiv = document.getElementById('map-list');
+
+        // This loop automatically creates a button for every map in your list
+        maps.forEach(mapFile => {
+            const btn = document.createElement('button');
+            
+            // Clean up the filename for the button text (e.g., "forest_level")
+            btn.innerText = mapFile.replace('.html', '').replace('_', ' ').toUpperCase();
+            btn.className = 'map-button';
+            
+            // Go to the file when clicked
+            btn.onclick = () => window.location.href = mapFile;
+            
+            mapListDiv.appendChild(btn);
+        });
+
+        // The Randomizer Function
+        function playRandom() {
+            const randomIndex = Math.floor(Math.random() * maps.length);
+            const chosenMap = maps[randomIndex];
+            window.location.href = chosenMap;
+        }
+    </script>
+
+</body>
+</html>
